@@ -1,0 +1,35 @@
+version: '3.9'
+services:
+  app:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: demo-streamlit-fastapi/app:latest
+    container_name: app
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - st_fastapi_net
+    environment:
+      BACKEND_HOST: backend:80
+    ports:
+      - 8080:8080
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: demo-streamlit-fastapi/backend:latest
+    container_name: backend
+    restart: unless-stopped
+    networks:
+      - st_fastapi_net
+    ports:
+      - 80:80
+    environment:
+      APP_MODULE: server:app
+
+networks:
+  st_fastapi_net:
+    driver: bridge
