@@ -12,11 +12,44 @@ logger = logging.getLogger(__name__)
 BACKEND_HOST = os.environ.get('BACKEND_HOST', '127.0.0.1:80')
 
 
-def main():
-    st.title('Demo with streamlit and fastapi')
+def show_result(job_id):
+    res = requests.get(f"http://{BACKEND_HOST}/result/{job_id}")
+    res_json = res.json()
+
+    if res_json['status'] == 'COMPLETED':
+        results = res_json['results']
+
+        if results is None:
+            st.error('Not found feasible solutionss')
+        else:
+            solution_options = [f'Solution {i}' for i in range(len(results))]
+
+            options = st.multiselect('Solutions', solution_options, [solution_options[0]])
+            if len(options) > 0:
+                columns = st.columns(len(options))
+                indices = [solution_options.index(option) for option in options]
+
+                for i, index in enumerate(indices):
+                    with columns[i]:
+                        st.write(f'**{options[i]}**')
+                        number_sums = [sum(v) for v in results[index].values()]
+                        st.metric('Standard deviation', round(np.std(number_sums), 2))
+                        st.bar_chart(number_sums)
+
+                selected_results = {options[i]: results[index] for index in indices}
+
+                st.download_button(
+                    label="Download these solutions as JSON",
+                    data=json.dumps(selected_results),
+                    file_name=f'solution-{job_id}.json',
+                    mime='application/json',
+                )
+
+
+def render_optimize():
     st.write('## Number Partitioning')
 
-    numbers_size = st.number_input('Size of numbers', 1, 100, 50)
+    numbers_size = st.slider('Size of numbers', 1, 100, 50)
     if st.button('Generate'):
         st.session_state['numbers'] = np.random.randint(1, 100, size=numbers_size)
 
@@ -25,52 +58,53 @@ def main():
 
     num_partitions = st.slider('Number of partitions', 2, 50)
 
-    st.write('## Optimization')
-    if 'numbers' in st.session_state and st.button('Submit'):
-        data = dict(numbers=st.session_state['numbers'].tolist(), num_partitions=num_partitions)
-        res = requests.post(f'http://{BACKEND_HOST}/optimize', data=json.dumps(data))
-        res_json = res.json()
-        st.write(res.text)
-        st.session_state['job_id'] = res_json['job_id']
+    if 'numbers' in st.session_state:
+        st.write('## Optimization')
+
+        if st.button('Submit'):
+            data = dict(numbers=st.session_state['numbers'].tolist(), num_partitions=num_partitions)
+            res = requests.post(f'http://{BACKEND_HOST}/optimize', data=json.dumps(data))
+            res_json = res.json()
+            st.write(res.text)
+            st.session_state['job_id'] = res_json['job_id']
 
     if 'job_id' in st.session_state:
-        st.write('## Result')
+        st.write('## Results')
 
-        # Refresh button
         if st.button('Refresh'):
             st.success('Refreshed')
 
-        res = requests.get(f"http://{BACKEND_HOST}/results/{st.session_state['job_id']}")
-        res_json = res.json()
+        show_result(st.session_state['job_id'])
 
-        if res_json['status'] == 'COMPLETED':
-            results = res_json['results']
 
-            st.bar_chart([sum(v) for v in results.values()])
-            st.write(results)
+def render_results():
+    st.write('## Results')
 
-        # Alternative: progress bar
-        # time_limit = 10
-        # my_bar = st.progress(0)
-        # for percent_complete in range(time_limit + 1):
-        #     res = requests.get(f"http://{BACKEND_HOST}/results/{st.session_state['job_id']}")
-        #     res_json = res.json()
+    res = requests.get(f"http://{BACKEND_HOST}/results")
+    file_paths = res.json()
 
-        #     if res_json['status'] == 'COMPLETED':
-        #         results = res_json['results']
-        #         break
+    def extract_job_id(file_path):
+        dirname = os.path.dirname(file_path)
+        return os.path.basename(dirname)
 
-        #     time.sleep(1)
-        #     my_bar.progress(percent_complete / time_limit)
-        # else:
-        #     st.error('No solutions')
+    options = list(map(extract_job_id, file_paths))
 
-        # if res_json['status'] == 'COMPLETED':
-        #     if results is None:
-        #         st.error('Not found feasible solutionss')
-        #     else:
-        #         st.bar_chart([sum(v) for v in results.values()])
-        #         st.write(results)
+    if len(options) > 0:
+        job_id = st.selectbox('Job ID', options)
+        st.markdown("""---""")
+        show_result(job_id)
+
+
+def main():
+    st.title('Demo with Streamlit and FastAPI')
+
+    with st.sidebar:
+        page = st.selectbox('Main menu', ('Optimization', 'Results'))
+
+    if page == 'Optimization':
+        render_optimize()
+    elif page == 'Results':
+        render_results()
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@ from typing import List
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from pyqubo import Array, Constraint, Placeholder
 from neal import SimulatedAnnealingSampler
@@ -72,7 +72,7 @@ def optimize(numbers: List[int], num_partitions: int, job_id: str):
     # TODO: setting sampler parameters via http request
     logger.info('Sampling')
     sampleset = SimulatedAnnealingSampler().sample(bqm, num_reads=10, num_sweeps=10000).aggregate()
-    import time; time.sleep(5)
+    # import time; time.sleep(5)
 
     decoded_samples = model.decode_sampleset(sampleset, feed_dict)
     feasible_samples = extract_feasible_samples(decoded_samples)
@@ -81,7 +81,7 @@ def optimize(numbers: List[int], num_partitions: int, job_id: str):
         results = None
     else:
         logger.info(f'# of feasible solutions: {len(feasible_samples)}')
-        results = sample_to_partitions(feasible_samples[0])
+        results = list(map(sample_to_partitions, feasible_samples))
 
     savedir = Path(f'{RESULT_DIR}/{job_id}')
     if not savedir.exists():
@@ -100,7 +100,16 @@ async def post_optimize(data: DataModel, background_tasks: BackgroundTasks = Non
     return {'job_id': job_id}
 
 
-@app.get('/results/{job_id}')
+@app.get('/results')
+async def results():
+    file_path = Path(RESULT_DIR)
+    if os.path.exists(file_path):
+        return list(map(str, file_path.glob('*/*')))
+    else:
+        return HTTPException(status_code=500, detail="Not found result dir")
+
+
+@app.get('/result/{job_id}')
 async def results(job_id):
     file_path = f'{RESULT_DIR}/{job_id}/{RESULT_FNAME}'
     if os.path.exists(file_path):
