@@ -1,7 +1,6 @@
 import logging
 import json
 import requests
-import time
 import os
 
 import streamlit as st
@@ -17,23 +16,25 @@ def show_result(job_id):
     res_json = res.json()
 
     if res_json['status'] == 'COMPLETED':
-        results = res_json['results']
+        results = res_json['results']['solutions']
 
         if results is None:
             st.error('Not found feasible solutionss')
         else:
             solution_options = [f'Solution {i}' for i in range(len(results))]
 
-            options = st.multiselect('Solutions', solution_options, [solution_options[0]])
+            options = st.multiselect('Select solutions', solution_options, [solution_options[0]])
             if len(options) > 0:
                 columns = st.columns(len(options))
                 indices = [solution_options.index(option) for option in options]
 
                 for i, index in enumerate(indices):
+                    result = results[index]
+
                     with columns[i]:
                         st.write(f'**{options[i]}**')
-                        number_sums = [sum(v) for v in results[index].values()]
-                        st.metric('Standard deviation', round(np.std(number_sums), 2))
+                        st.metric('Standard deviation', result['evaluation']['std'])
+                        number_sums = [sum(v) for v in result['partition'].values()]
                         st.bar_chart(number_sums)
 
                 selected_results = {options[i]: results[index] for index in indices}
@@ -90,7 +91,7 @@ def render_results():
     options = list(map(extract_job_id, file_paths))
 
     if len(options) > 0:
-        job_id = st.selectbox('Job ID', options)
+        job_id = st.selectbox('Select Job ID', options)
         st.markdown("""---""")
         show_result(job_id)
 

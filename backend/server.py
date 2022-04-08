@@ -3,10 +3,12 @@ import re
 import json
 import os
 from collections import defaultdict
+from time import perf_counter
 from typing import List
 from pathlib import Path
 from datetime import datetime
 
+import numpy as np
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from pyqubo import Array, Constraint, Placeholder
@@ -52,6 +54,12 @@ def sample_to_partitions(sample):
     return dict(partitions)
 
 
+def evaluate_partition(partition):
+    number_sums = [sum(v) for v in partition.values()]
+    std = round(np.std(number_sums), 2)
+    return dict(std=std)
+
+
 def optimize(numbers: List[int], num_partitions: int, job_id: str):
     logger.info(numbers)
     logger.info(num_partitions)
@@ -71,7 +79,9 @@ def optimize(numbers: List[int], num_partitions: int, job_id: str):
 
     # TODO: setting sampler parameters via http request
     logger.info('Sampling')
+    start = perf_counter()
     sampleset = SimulatedAnnealingSampler().sample(bqm, num_reads=10, num_sweeps=10000).aggregate()
+    run_time = perf_counter() - start
     # import time; time.sleep(5)
 
     decoded_samples = model.decode_sampleset(sampleset, feed_dict)
@@ -81,7 +91,13 @@ def optimize(numbers: List[int], num_partitions: int, job_id: str):
         results = None
     else:
         logger.info(f'# of feasible solutions: {len(feasible_samples)}')
-        results = list(map(sample_to_partitions, feasible_samples))
+        partition = list(map(sample_to_partitions, feasible_samples))
+        evaluations = list(map(evaluate_partition, partition))
+        results = dict(
+            solutions=[dict(partition=partition, evaluation=evaluation)
+                     for partition, evaluation in zip(partition, evaluations)],
+            info=dict(job_id=job_id, run_time=run_time),
+        )
 
     savedir = Path(f'{RESULT_DIR}/{job_id}')
     if not savedir.exists():
