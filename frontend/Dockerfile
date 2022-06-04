@@ -8,4 +8,4 @@ RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi
 
 COPY . .
-CMD ["streamlit", "run", "app.py", "--server.port", "8080"]
+CMD ["streamlit", "run", "Top_page.py", "--server.port", "8080"]
